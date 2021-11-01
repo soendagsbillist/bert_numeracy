@@ -159,3 +159,14 @@ dataset_train = NumeracyDataset(n_examples=train_size, min_digits=min_digits_tra
                           invert_answer=invert_answer, balance=balance_train)
 
 train_generator = DataLoader(dataset_train)
+
+def convert_to_string(generator: DataLoader) -> str:
+    equations = []
+    for idx, item in enumerate(train_generator):
+      itr += 1
+      equation = ''.join(item)
+      equations.append(equation)
+    return equations
+
+equations = convert_to_str(train_generator)
+text = '\n'.join(equations)
