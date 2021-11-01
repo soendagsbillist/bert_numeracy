@@ -1,6 +1,8 @@
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
+from transformers import BertTokenizer, BertForMaskedLM
+import torch
 import random
 
 def convert_to_base(num: int, base: int, numerals="0123456789abcdefghijklmnopqrstuvwxyz") -> str:
@@ -170,3 +172,12 @@ def convert_to_string(generator: DataLoader) -> str:
 
 equations = convert_to_str(train_generator)
 text = '\n'.join(equations)
+
+def mask_data(text: str):
+  inputs = tokenizer(text, return_tensors='pt')
+  inputs['labels'] = inputs.input_ids.detach().clone()
+  rand = torch.rand(inputs.input_ids.shape)
+  mask_arr = rand < 0.15 * (inputs.input_ids != 101) * (inputs.input_ids != 102)
+  mask_selection = torch.flatten(mask_arr[0].nonzero()).tolist()
+  inputs.input_ids[0, mask_selection] = 103
+  return inputs
