@@ -160,6 +160,7 @@ dataset_train = NumeracyDataset(n_examples=train_size, min_digits=min_digits_tra
                           base_number=base_number, invert_question=invert_question,
                           invert_answer=invert_answer, balance=balance_train)
 
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 train_generator = DataLoader(dataset_train)
 
 def convert_to_string(generator: DataLoader) -> str:
@@ -180,4 +181,24 @@ def mask_data(text: str):
   mask_arr = rand < 0.15 * (inputs.input_ids != 101) * (inputs.input_ids != 102)
   mask_selection = torch.flatten(mask_arr[0].nonzero()).tolist()
   inputs.input_ids[0, mask_selection] = 103
+  return inputs
+
+def encode(data: NumeracyDataset, tokenizer: BertTokenizer):
+  selection = []
+  inputs = tokenizer(list(data), return_tensors='pt', padding='longest')
+  # copy input_ids and append as labels
+  inputs['labels'] = inputs.input_ids.detach().clone()
+  # mask 15%
+  rand = torch.rand(inputs.input_ids.shape)
+  # crate a binary array and define what to [MASK]
+  mask_arr = (rand < 0.15 * (inputs.input_ids != 101) *
+              (inputs.input_ids != 102) *
+              (inputs.input_ids != 0))
+  # populate selection list with selections, duh.
+  for i in range(0, mask_arr.shape[0]):
+    mask_selection = torch.flatten(mask_arr[i].nonzero()).tolist()
+    selection.append(mask_selection)
+  # [MASK]
+  for i in range(0, mask_arr.shape[0]):
+    inputs.input_ids[i, selection[i]] = 103
   return inputs
