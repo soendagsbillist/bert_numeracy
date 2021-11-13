@@ -191,9 +191,13 @@ def encode(data: NumeracyDataset, tokenizer: BertTokenizer):
   # mask 15%
   rand = torch.rand(inputs.input_ids.shape)
   # crate a binary array and define what to [MASK]
+  # tokens: 101(beginning), 102(end), 0(padding),
+  # 19635(equals), 4606(plus)
   mask_arr = (rand < 0.15 * (inputs.input_ids != 101) *
               (inputs.input_ids != 102) *
-              (inputs.input_ids != 0))
+              (inputs.input_ids != 0) *
+              (inputs.input_ids != 19635) *
+              (inputs.input_ids != 4606))
   # populate selection list with selections, duh.
   for i in range(0, mask_arr.shape[0]):
     mask_selection = torch.flatten(mask_arr[i].nonzero()).tolist()
