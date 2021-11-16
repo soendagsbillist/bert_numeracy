@@ -206,3 +206,40 @@ def encode(data: NumeracyDataset, tokenizer: BertTokenizer):
   for i in range(0, mask_arr.shape[0]):
     inputs.input_ids[i, selection[i]] = 103
   return inputs
+
+def validate(model: BertForMaskedLM, epochs: int, val_data_generator: DataLoader):
+    loop = tqdm(val_data_generator, leave=True)
+    model.eval()
+    model.to(device)
+
+    with torch.no_grad():
+        input_ids = batch['input_ids'].to(device)
+        attention_mask = batch['attention_mask'].to(device)
+        labels = batch['labels'].to(device)
+
+        outputs = model(input_ids,
+                attention_mask=attention_mask,
+                labels=labels)
+
+        ouputs["input_ids"] = input_ids[0]
+        output_logits = outputs["logits"]
+        masked_ids = []
+
+        # position index for each mask of each input
+        for i in range(input_ids.shape[0]):
+            masked_id = torch.nonzer(input_ids[i].view(-1) ==
+                    tokenizer.mask_token_ids, as_tuple=False)
+            masked_ids.append(masked_id)
+
+        # compare preds with labels
+        for i in range(output_logits.shape[0]):
+            logits = output_logits[i, masked_ids[i], :]
+            ground_truth = labels[i, masked_ids[i]]
+            if logits.shape[0] > 1:
+                for i in (range(logits.shape[0])):
+                    y_hat = torch.argmax(logits[i])
+                    y = ground_truth[i].item()
+            elif logits.shape[0] == 1:
+                y_hat = torch.argmax(logits)
+                y = ground_truth.item()
+
