@@ -207,39 +207,68 @@ def encode(data: NumeracyDataset, tokenizer: BertTokenizer):
     inputs.input_ids[i, selection[i]] = 103
   return inputs
 
-def validate(model: BertForMaskedLM, epochs: int, val_data_generator: DataLoader):
-    loop = tqdm(val_data_generator, leave=True)
+def validate(model: BertForMaskedLM, epochs, test_data_generator: DataLoader, EM: bool):
+    loop = tqdm(test_data_generator, leave=True)
     model.eval()
     model.to(device)
+    total_train_loss = 0
+    for batch in loop:
+          with torch.no_grad():
+                input_ids = batch['input_ids'].to(device)
+                attention_mask = batch['attention_mask'].to(device)
+                labels = batch['labels'].to(device)
 
-    with torch.no_grad():
-        input_ids = batch['input_ids'].to(device)
-        attention_mask = batch['attention_mask'].to(device)
-        labels = batch['labels'].to(device)
+                outputs = model(input_ids,
+                                attention_mask=attention_mask,
+                                labels=labels)
 
-        outputs = model(input_ids,
-                attention_mask=attention_mask,
-                labels=labels)
+                outputs["input_ids"] = input_ids[0]
+                masked_ids = []
+                preds = []
+                expected = []
+                em = []
+                for i in range(input_ids.shape[0]):
+                    masked_id = torch.nonzero(input_ids[i].view(-1) == tokenizer.mask_token_id, as_tuple=False)
+                    masked_ids.append(masked_id)
+                    output_logits = outputs["logits"]
+                for i in range(output_logits.shape[0]):
+                    logits = output_logits[i, masked_ids[i], :]
+                    ground_truth = labels[i, masked_ids[i]]
+                    if logits.shape[0] > 1:
+                        for i in (range(logits.shape[0])):
+                            y_hat = torch.argmax(logits[i])
+                            y = ground_truth[i].item()
+                            if EM == False and postprocess_subwords(tokenizer.decode(y_hat)).isdigit():
+                                preds.append(int(postprocess_subwords(tokenizer.decode(y_hat))))
+                                expected.append(int(postprocess_subwords(tokenizer.decode(y))))
+                            elif EM == True:
+                            # compare tokens
+                                if int(y_hat) == int(y):
+                                    em.append(1)
+                                else:
+                                    em.append(0)
 
-        ouputs["input_ids"] = input_ids[0]
-        output_logits = outputs["logits"]
-        masked_ids = []
+                    elif logits.shape[0] == 1:
+                        y_hat = torch.argmax(logits)
+                        y = ground_truth.item()
+                        if EM == False and postprocess_subwords(tokenizer.decode(y_hat)).isdigit():
+                            preds.append(int(postprocess_subwords(tokenizer.decode(y_hat))))
+                            expected.append(int(postprocess_subwords(tokenizer.decode(y))))
+                        elif EM == True:
+                            if int(y_hat) == int(y):
+                                em.append(1)
+                            else:
+                                em.append(0)
 
-        # position index for each mask of each input
-        for i in range(input_ids.shape[0]):
-            masked_id = torch.nonzer(input_ids[i].view(-1) ==
-                    tokenizer.mask_token_ids, as_tuple=False)
-            masked_ids.append(masked_id)
-
-        # compare preds with labels
-        for i in range(output_logits.shape[0]):
-            logits = output_logits[i, masked_ids[i], :]
-            ground_truth = labels[i, masked_ids[i]]
-            if logits.shape[0] > 1:
-                for i in (range(logits.shape[0])):
-                    y_hat = torch.argmax(logits[i])
-                    y = ground_truth[i].item()
-            elif logits.shape[0] == 1:
-                y_hat = torch.argmax(logits)
-                y = ground_truth.item()
-
+                if EM == True:
+                    exact_match = sum(em) / len(em)
+                    loop.set_description(f'Evaluation with EM: ')
+                    loop.set_postfix(EM=exact_match)
+                    total_train_loss += exact_match
+                else:
+                    rmse = RMSELoss(preds, expected)
+                    loop.set_description(f'Evaluation with RMSE: ')
+                    loop.set_postfix(error=rmse.item())
+                    total_train_loss += rmse
+    avg_train_loss = total_train_loss / len(test_data_generator)
+    print("  Average validation loss: {0:.2f}".format(avg_train_loss))
