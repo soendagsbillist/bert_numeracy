@@ -291,5 +291,5 @@ def train(model, optimizer, data_generator):
         loop.set_description(f'Epoch {epoch}')
         loop.set_postfix(loss=loss.item())
         total_train_loss += loss.item()
-    avg_train_loss += total_train_loss / len(data_generator)
+    avg_train_loss = total_train_loss / len(data_generator)
     print("  Average training loss: {0:.2f}".format(avg_train_loss))
