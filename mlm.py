@@ -272,3 +272,24 @@ def validate(model: BertForMaskedLM, epochs, test_data_generator: DataLoader, EM
                     total_train_loss += rmse
     avg_train_loss = total_train_loss / len(test_data_generator)
     print("  Average validation loss: {0:.2f}".format(avg_train_loss))
+
+def train(model, optimizer, data_generator):
+    model.train()
+    loop = tqdm(data_generator, leave=True)
+    total_train_loss = 0
+    for batch in loop:
+        optimizer.zero_grad()
+        input_ids = batch['input_ids'].to(device)
+        attention_mask = batch['attention_mask'].to(device)
+        labels = batch['labels'].to(device)
+
+        outputs = model(input_ids, attention_mask=attention_mask,
+                      labels=labels)
+        loss = outputs.loss
+        loss.backward()
+        optimizer.step()
+        loop.set_description(f'Epoch {epoch}')
+        loop.set_postfix(loss=loss.item())
+        total_train_loss += loss.item()
+    avg_train_loss += total_train_loss / len(data_generator)
+    print("  Average training loss: {0:.2f}".format(avg_train_loss))
