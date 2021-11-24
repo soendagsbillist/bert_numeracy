@@ -2,6 +2,7 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from transformers import BertTokenizer, BertForMaskedLM
+from transformers import AdamW
 import torch
 import random
 
@@ -144,6 +145,14 @@ class NumeracyDataset(Dataset):
     else:
       raise Exception(f'Wrong orthography: {self.orthography}')
 
+class ExpressionsDataset(Dataset):
+  def __init__(self, encodings):
+    self.encodings = encodings
+  def __getitem__(self, idx):
+    return {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
+  def __len__(self):
+    return len(self.encodings.input_ids)
+
 train_size = 10000
 min_digits_train = 2
 max_digits_train = 3
@@ -166,12 +175,11 @@ train_generator = DataLoader(dataset_train)
 def convert_to_string(generator: DataLoader) -> str:
     equations = []
     for idx, item in enumerate(train_generator):
-      itr += 1
       equation = ''.join(item)
       equations.append(equation)
     return equations
 
-equations = convert_to_str(train_generator)
+equations = convert_to_string(train_generator)
 text = '\n'.join(equations)
 
 def mask_data(text: str):
@@ -275,13 +283,17 @@ def validate(model: BertForMaskedLM, epochs, test_data_generator: DataLoader, EM
 
 def train(model, optimizer, data_generator):
     model.train()
+    # model.to(device)
     loop = tqdm(data_generator, leave=True)
     total_train_loss = 0
     for batch in loop:
         optimizer.zero_grad()
-        input_ids = batch['input_ids'].to(device)
-        attention_mask = batch['attention_mask'].to(device)
-        labels = batch['labels'].to(device)
+        # input_ids = batch['input_ids'].to(device)
+        # attention_mask = batch['attention_mask'].to(device)
+        # labels = batch['labels'].to(device)
+        input_ids = batch['input_ids']
+        attention_mask = batch['attention_mask']
+        labels = batch['labels']
 
         outputs = model(input_ids, attention_mask=attention_mask,
                       labels=labels)
@@ -293,3 +305,14 @@ def train(model, optimizer, data_generator):
         total_train_loss += loss.item()
     avg_train_loss = total_train_loss / len(data_generator)
     print("  Average training loss: {0:.2f}".format(avg_train_loss))
+
+if __name__ == '__main__':
+    epochs = 1
+    model = BertForMaskedLM.from_pretrained('bert-base-uncased')
+    optimizer = AdamW(model.parameters(), lr=5e-5)
+    train_masked_data = encode(dataset_train, tokenizer)
+    train_expressions = ExpressionsDataset(train_masked_data)
+    train_data_generator = DataLoader(train_expressions, batch_size=16, shuffle=True)
+    for epoch in range(epochs):
+        train(model, optimizer, train_data_generator)
+print(__name__)
