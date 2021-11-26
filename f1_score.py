@@ -18,7 +18,7 @@ def normalize_answer(s):
     return ''.join(ch for ch in text if ch not in exclude)
   def lower(text):
     return text.lower()
-  return white_space_fix(remove_articles(remove_punc(lower(s)))
+  return white_space_fix(remove_articles(remove_punc(lower(s))))
 
 def create_segment_ids(input_ids):
   sep_index = input_ids.index(tokenizer.sep_token_id)
@@ -60,7 +60,7 @@ def test_accuracy(model, data_generator):
 
                 # check for digits
                 if normalized_prediction.strip().isdigit():
-                    if normalized_prediction.strip() == gold_tokens.strip()
+                    if normalized_prediction.strip() == gold_tokens.strip():
                         precision = 1
                         recall = 1
                     else:
