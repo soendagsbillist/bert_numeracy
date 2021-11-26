@@ -297,7 +297,11 @@ def accuracy(model: BertForMaskedLM, data_generator: DataLoader, EM: bool):
                     loop.set_postfix(error=rmse.item())
                     total_train_loss += rmse
     avg_train_loss = total_train_loss / len(data_generator)
-    print("  Average validation loss: {0:.2f}".format(avg_train_loss))
+
+    if EM == True:
+        print("Average EM accuracy: {0:.2f}".format(avg_train_loss))
+    else:
+        print("Average RMSE accuracy: {0:.2f}".format(avg_train_loss))
 
 def train(model, optimizer, data_generator):
     model.train()
