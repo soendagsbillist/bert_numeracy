@@ -4,7 +4,9 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm.auto import tqdm
 import torch
 from transformers import BertForQuestionAnswering
-
+import string
+import re
+from collections import Counter
 
 def normalize_answer(s):
   """Lower text and remove punctuation, articles and extra whitespace."""
@@ -97,6 +99,6 @@ if __name__=="__main__":
     validation_data = dataset['validation']
     val_generator = DataLoader(validation_data,
                                 batch_size=8,
-                                collate_fn=lambda x: x,
-                                num_workers=2)
+                                collate_fn=lambda x: x)
+    # test_accuracy(model, val_generator)
     print(f'F1 Score: {test_accuracy(model, val_generator)}')
