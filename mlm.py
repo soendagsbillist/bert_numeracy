@@ -5,6 +5,7 @@ from transformers import BertTokenizer, BertForMaskedLM
 from transformers import AdamW
 import torch
 import random
+import pathlib
 
 def convert_to_base(num: int, base: int, numerals="0123456789abcdefghijklmnopqrstuvwxyz") -> str:
     return ((num == 0) and numerals[0]) or (
@@ -145,6 +146,14 @@ class NumeracyDataset(Dataset):
     else:
       raise Exception(f'Wrong orthography: {self.orthography}')
 
+def postprocess_subwords(word: str) -> str:
+  remove_space = word.replace(" ", "")
+  remove_hash = remove_space.replace("#", "")
+  return remove_hash
+
+def RMSELoss(yhat, y):
+  return torch.sqrt(torch.mean((torch.Tensor(yhat)-torch.Tensor(y))**2))
+
 class ExpressionsDataset(Dataset):
   def __init__(self, encodings):
     self.encodings = encodings
@@ -154,16 +163,22 @@ class ExpressionsDataset(Dataset):
     return len(self.encodings.input_ids)
 
 train_size = 10000
+val_size = 2000
 min_digits_train = 2
-max_digits_train = 3
+max_digits_train = 5
 operation = 'addition'
 orthography = 'decimal'
 base_number = 10
 invert_question = False
 invert_answer = False
-balance_train = False
+balance_train = True
 
 dataset_train = NumeracyDataset(n_examples=train_size, min_digits=min_digits_train,
+                          max_digits=max_digits_train,
+                          operation=operation, orthography=orthography,
+                          base_number=base_number, invert_question=invert_question,
+                          invert_answer=invert_answer, balance=balance_train)
+dataset_val = NumeracyDataset(n_examples=val_size, min_digits=min_digits_train,
                           max_digits=max_digits_train,
                           operation=operation, orthography=orthography,
                           base_number=base_number, invert_question=invert_question,
@@ -215,16 +230,19 @@ def encode(data: NumeracyDataset, tokenizer: BertTokenizer):
     inputs.input_ids[i, selection[i]] = 103
   return inputs
 
-def validate(model: BertForMaskedLM, epochs, test_data_generator: DataLoader, EM: bool):
-    loop = tqdm(test_data_generator, leave=True)
+def accuracy(model: BertForMaskedLM, data_generator: DataLoader, EM: bool):
+    loop = tqdm(data_generator, leave=True)
     model.eval()
-    model.to(device)
+    # model.to(device)
     total_train_loss = 0
     for batch in loop:
           with torch.no_grad():
-                input_ids = batch['input_ids'].to(device)
-                attention_mask = batch['attention_mask'].to(device)
-                labels = batch['labels'].to(device)
+                # input_ids = batch['input_ids'].to(device)
+                # attention_mask = batch['attention_mask'].to(device)
+                # labels = batch['labels'].to(device)
+                input_ids = batch['input_ids']
+                attention_mask = batch['attention_mask']
+                labels = batch['labels']
 
                 outputs = model(input_ids,
                                 attention_mask=attention_mask,
@@ -278,7 +296,7 @@ def validate(model: BertForMaskedLM, epochs, test_data_generator: DataLoader, EM
                     loop.set_description(f'Evaluation with RMSE: ')
                     loop.set_postfix(error=rmse.item())
                     total_train_loss += rmse
-    avg_train_loss = total_train_loss / len(test_data_generator)
+    avg_train_loss = total_train_loss / len(data_generator)
     print("  Average validation loss: {0:.2f}".format(avg_train_loss))
 
 def train(model, optimizer, data_generator):
@@ -304,15 +322,49 @@ def train(model, optimizer, data_generator):
         loop.set_postfix(loss=loss.item())
         total_train_loss += loss.item()
     avg_train_loss = total_train_loss / len(data_generator)
-    print("  Average training loss: {0:.2f}".format(avg_train_loss))
+    print("Average training loss: {0:.2f}".format(avg_train_loss))
+
+def validate(model, data_generator):
+    model.eval()
+    # model.to(device)
+    loop = tqdm(data_generator, leave=True)
+    total_eval_loss = 0
+    for batch in loop:
+        # input_ids = batch['input_ids'].to(device)
+        # attention_mask = batch['attention_mask'].to(device)
+        # labels = batch['labels'].to(device)
+        input_ids = batch['input_ids']
+        attention_mask = batch['attention_mask']
+        labels = batch['labels']
+        with torch.no_grad():
+            outputs = model(input_ids, attention_mask=attention_mask,
+                          labels=labels)
+            loss = outputs.loss
+            loop.set_description(f'Epoch {epoch}')
+            loop.set_postfix(loss=loss.item())
+            total_eval_loss += loss.item()
+    avg_eval_loss = total_eval_loss / len(data_generator)
+    print("Average validation loss: {0:.2f}".format(avg_eval_loss))
 
 if __name__ == '__main__':
-    epochs = 1
+    epochs = 10
+    PATH = pathlib.Path().resolve()
     model = BertForMaskedLM.from_pretrained('bert-base-uncased')
     optimizer = AdamW(model.parameters(), lr=5e-5)
     train_masked_data = encode(dataset_train, tokenizer)
     train_expressions = ExpressionsDataset(train_masked_data)
-    train_data_generator = DataLoader(train_expressions, batch_size=16, shuffle=True)
+    train_data_generator = DataLoader(train_expressions, batch_size=16,
+                                    shuffle=True)
+    val_masked_data = encode(dataset_val, tokenizer)
+    val_expressions = ExpressionsDataset(val_masked_data)
+    val_data_generator = DataLoader(val_expressions, batch_size=16,
+                                    shuffle=True)
     for epoch in range(epochs):
         train(model, optimizer, train_data_generator)
+        accuracy(model, train_data_generator, EM=True)
+        accuracy(model, train_data_generator, EM=False)
+        validate(model, val_data_generator)
+        accuracy(model, val_data_generator, EM=True)
+        accuracy(model, val_data_generator, EM=False)
+    model.save_pretrained(PATH)
 print(__name__)
