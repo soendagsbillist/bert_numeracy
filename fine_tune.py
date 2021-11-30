@@ -47,18 +47,15 @@ class SquadDataset(torch.utils.data.Dataset):
 
 def train(model, optimizer, data_loader, epoch):
     model.train()
+    model.to(device)
     loop = tqdm(data_loader, leave=True)
     total_train_loss = 0
     for batch in loop:
         optimizer.zero_grad()
-        #input_ids = batch['input_ids'].to(device)
-        #attention_mask = batch['attention_mask'].to(device)
-        #start_positions = batch['start_positions'].to(device)
-        #end_positions = batch['end_positions'].to(device)
-        input_ids = batch['input_ids']
-        attention_mask = batch['attention_mask']
-        start_positions = batch['start_positions']
-        end_positions = batch['end_positions']
+        input_ids = batch['input_ids'].to(device)
+        attention_mask = batch['attention_mask'].to(device)
+        start_positions = batch['start_positions'].to(device)
+        end_positions = batch['end_positions'].to(device)
         outputs = model(input_ids, attention_mask=attention_mask,
                         start_positions=start_positions,
                         end_positions=end_positions)
@@ -79,14 +76,10 @@ def validate(model, data_loader, epoch):
     total_eval_loss = 0
 
     for batch in loop:
-        #input_ids = batch['input_ids'].to(device)
-        #attention_mask = batch['attention_mask'].to(device)
-        #start_positions = batch['start_positions'].to(device)
-        #end_positions = batch['end_positions'].to(device)
-        input_ids = batch['input_ids']
-        attention_mask = batch['attention_mask']
-        start_positions = batch['start_positions']
-        end_positions = batch['end_positions']
+        input_ids = batch['input_ids'].to(device)
+        attention_mask = batch['attention_mask'].to(device)
+        start_positions = batch['start_positions'].to(device)
+        end_positions = batch['end_positions'].to(device)
         with torch.no_grad():
             outputs = model(input_ids, attention_mask=attention_mask,
                             start_positions=start_positions,
@@ -107,29 +100,29 @@ if __name__=="__main__":
     dataset = load_dataset('squad')
     tokenizer = DistilBertTokenizerFast.from_pretrained('distilbert-base-uncased')
 
-    #train_answers = [dataset['train'][i]['answers'] for i in range(len(dataset['train']))]
-    #train_contexts = [dataset['train'][i]['context'] for i in range(len(dataset['train']))]
-    #train_questions = [dataset['train'][i]['question'] for i in range(len(dataset['train']))]
-    #add_end_idx(train_answers, train_contexts)
+    train_answers = [dataset['train'][i]['answers'] for i in range(len(dataset['train']))]
+    train_contexts = [dataset['train'][i]['context'] for i in range(len(dataset['train']))]
+    train_questions = [dataset['train'][i]['question'] for i in range(len(dataset['train']))]
+    add_end_idx(train_answers, train_contexts)
 
     val_answers = [dataset['validation'][i]['answers'] for i in range(len(dataset['validation']))]
     val_contexts = [dataset['validation'][i]['context'] for i in range(len(dataset['validation']))]
     val_questions = [dataset['validation'][i]['question'] for i in range(len(dataset['validation']))]
     add_end_idx(val_answers, val_contexts)
 
-    #train_encodings = tokenizer(train_contexts, train_questions, truncation=True, padding=True)
-    #add_token_positions(train_encodings, train_answers)
+    train_encodings = tokenizer(train_contexts, train_questions, truncation=True, padding=True)
+    add_token_positions(train_encodings, train_answers)
     val_encodings = tokenizer(val_contexts, val_questions, truncation=True, padding=True)
     add_token_positions(val_encodings, val_answers)
 
-    #train_dataset = SquadDataset(train_encodings)
+    train_dataset = SquadDataset(train_encodings)
     val_dataset = SquadDataset(val_encodings)
 
-    #train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, shuffle=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=8, shuffle=True)
 
     for epoch in range(num_epoch):
-        #train(model, optimizer, train_loader, epoch)
+        train(model, optimizer, train_loader, epoch)
         validate(model, val_loader, epoch)
 
     model.save_pretrained(PATH) 
