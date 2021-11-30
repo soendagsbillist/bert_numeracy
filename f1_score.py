@@ -7,6 +7,7 @@ from transformers import BertForQuestionAnswering
 import string
 import re
 from collections import Counter
+from allennlp_models.rc.metrics import drop_em_and_f1
 
 def normalize_answer(s):
   """Lower text and remove punctuation, articles and extra whitespace."""
@@ -41,7 +42,7 @@ def test_accuracy(model, data_generator):
             que = ''.join(q['question'])
             passage = ''.join(q['passage'])
     
-            if 'span' or 'date' in list(list(zip(*answer['types']))[0]):
+            if 'span' in list(list(zip(*answer['types']))[0]) or 'date' in list(list(zip(*answer['types']))[0]):
                 input_ids = tokenizer.encode(que,
                                         passage,
                                         max_length=384,
@@ -90,15 +91,61 @@ def test_accuracy(model, data_generator):
     f1 = (2 * avg_precision * avg_recall) / (avg_precision + avg_recall)
     return f1
 
+def evaluate(model, data_loader):
+    annotations = []
+    preds = []
+    for index, data in enumerate(tqdm(data_loader)):
+        if index > 2:
+            break
+        for q in data:
+            answ = q['answers_spans']
+            que = ''.join(q['question'])
+            passage = ''.join(q['passage'])
+
+            if 'span' in answ['types'] or 'date' in answ['types']:
+                input_ids = tokenizer.encode(que, passage,
+                                            max_length=384,
+                                            truncation="only_second").to(device)
+                segment_ids = create_segment_ids(input_ids)
+                outputs = model(torch.tensor([input_ids]))
+                                            token_type_ids=torch.tensor([segment_ids]).to(device),
+                                            return_dict=True)
+                predicted_start = torch.argmax(outputs.start_logits)
+                predicted_end = torch.argmax(outputs.end_logits)
+                # normalize predicted answer
+                tokens = tokenizer.convert_ids_to_tokens(input_ids)
+                normalized_prediction = normalize_answer(''.join(tokens[predicted_start:predicted_end+1]))
+                # get ground truth tokens
+                # gold_tokens = ''.join(answ['spans'][0])
+
+                annotations.append(answ)
+                preds.append(normalized_prediction)
+
+    return annotations, preds
+
+def drop_accuracy(gold, preds):
+    metric = drop_em_and_f1.DropEmAndF1()
+    for i, token in enumerate(tqdm(preds)):
+        metric.__call__(token, gold)
+    return metric.get_metric()
+
 if __name__=="__main__":
     dataset = load_dataset('drop')
     tokenizer = BertTokenizer.from_pretrained('bert-large-uncased-whole-word-masking-finetuned-squad')
-    # device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     model = BertForQuestionAnswering.from_pretrained('bert-large-uncased-whole-word-masking-finetuned-squad')
+    model.to(device)
     validation_data = dataset['validation']
-    val_generator = DataLoader(validation_data,
+    val_loader = DataLoader(validation_data,
                                 batch_size=8,
                                 collate_fn=lambda x: x)
+    train_data = dataset['train']
+    train_loader= DataLoader(train_data,
+                                batch_size=8,
+                                collate_fn=lambda x: x)
+    gold_tokens, preds = evaluate(model, train_loader)
+    accuracy = drop_accuracy(gold_tokens, preds)
+    print(f'EM and F1 Score: {accuracy}')
     # test_accuracy(model, val_generator)
-    print(f'F1 Score: {test_accuracy(model, val_generator)}')
+    # print(f'F1 Score: {test_accuracy(model, val_generator)}')
